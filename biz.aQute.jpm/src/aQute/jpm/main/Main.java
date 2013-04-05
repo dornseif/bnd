@@ -11,6 +11,8 @@ import java.util.Map.Entry;
 import java.util.jar.*;
 import java.util.regex.*;
 
+import javax.swing.text.html.*;
+
 import aQute.bnd.osgi.*;
 import aQute.bnd.version.*;
 import aQute.jpm.lib.*;
@@ -34,7 +36,8 @@ import aQute.service.library.Library.Revision;
 /**
  * The command line interface to JPM
  */
-@Description("Just Another Package Manager (for Java)\nMaintains a local repository of Java jars (apps or libs). Can automatically link these jars to an OS command or OS service. For more information see https://www.jpm4j.org/#/md/jpm")
+//@Description("Just Another Package Manager (for Java)\nMaintains a local repository of Java jars (apps or libs). Can automatically link these jars to an OS command or OS service. For more information see https://www.jpm4j.org/#/md/jpm")
+@Description("JPM-testing")
 public class Main extends ReporterAdapter {
 	static Pattern				ASSIGNMENT		= Pattern.compile("\\s*([-\\w\\d_.]+)\\s*(?:=\\s*([^\\s]+)\\s*)?");
 	public final static Pattern	URL_PATTERN		= Pattern.compile("[a-zA-Z][0-9A-Za-z]{1,8}:.+");
@@ -94,7 +97,7 @@ public class Main extends ReporterAdapter {
 	@Arguments(arg = {
 		"[name]"
 	})
-	@Description("Manage the JPM ervices. Without arguments and options, this wil show all the current services. Careful, if --remove is used all services are removed without any parameters.")
+	@Description("Manage the JPM services. Without arguments and options, this will show all the current services. Careful, if --remove is used all services are removed without any parameters.")
 	public interface ServiceOptions extends Options, ModifyService {
 
 		@Description("Create a new service on an existing artifact")
@@ -132,7 +135,7 @@ public class Main extends ReporterAdapter {
 	@Arguments(arg = {
 			"bsn", "..."
 	})
-	public interface uninstallOptions extends Options {
+	public interface uninstallOptions_unused extends Options { //pl: not used ...
 		@Description("Version range that must be matched, if not specified all versions are removed.")
 		Version version();
 	}
@@ -523,7 +526,7 @@ public class Main extends ReporterAdapter {
 
 		if (opts.remove()) {
 			if (!jpm.hasAccess()) {
-				error("No write access to create service %s", name);
+				error("No write access to remove service %s", name);
 				return;
 			}
 			if (s == null) {
@@ -837,6 +840,7 @@ public class Main extends ReporterAdapter {
 	 * @param options
 	 * @throws Exception
 	 */
+	@Arguments(arg = {"service"})
 	interface startOptions extends Options {
 		boolean clean();
 	}
@@ -1282,7 +1286,7 @@ public class Main extends ReporterAdapter {
 	}
 
 	/**
-	 * Turned out that StartSSL HTTPS certifcates are not recognized by the Java
+	 * Turned out that StartSSL HTTPS certificates are not recognized by the Java
 	 * certificate store. So we have a command to get the certificate chain
 	 */
 
@@ -1471,5 +1475,47 @@ public class Main extends ReporterAdapter {
 			error("No such file %s", f);
 		}
 
+	}
+	
+	/**
+	 * Alternative for command -r {@code <commandName>}
+	 */
+	@Arguments(arg = "command|service")
+	@Description("Remove the specified command or service from the system (equivalent to jpm <commmand|service> -r <command|service>)")
+	interface UninstallOptions extends Options {}
+	
+	@Description("Remove a command or a service from the system")
+	public void _remove(UninstallOptions opts) throws Exception {
+		if(!jpm.hasAccess()) {
+			error("No write acces, might require administrator or root privileges (sudo in *nix)");
+			return;
+		}
+		
+		if (opts._().isEmpty()) {
+			error("Syntax: jpm remove <command|service>");
+			return;
+		}
+
+		String name = opts._().get(0);
+		Service s = null;
+		
+		if(jpm.getCommand(name) != null) { // Try command first
+			trace("Corresponding command found, removing");
+			jpm.deleteCommand(name);
+			/*try {
+				jpm.deleteCommand(cmd);
+			}
+			catch (Exception e) {
+				exception(e, "Failed to remove the command (%s): %s", cmd, e.getMessage());
+			}*/
+			
+		} else if((s = jpm.getService(name)) != null) { // No command matching, try service
+			trace("Corresponding service found, removing");
+			s.remove();
+		
+		} else { // No match amongst commands & services
+			error("No matching command or service found");
+		}
+		
 	}
 }
