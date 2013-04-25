@@ -31,19 +31,18 @@ import aQute.bnd.osgi.*;
 import aQute.bnd.osgi.Clazz.Def;
 import aQute.bnd.osgi.Descriptors.PackageRef;
 import aQute.bnd.osgi.Descriptors.TypeRef;
+import aQute.bnd.osgi.Domain;
 import aQute.bnd.osgi.Verifier;
 import aQute.bnd.osgi.eclipse.*;
 import aQute.bnd.service.action.*;
 import aQute.bnd.version.*;
 import aQute.configurable.*;
 import aQute.lib.base64.*;
-import aQute.lib.codec.*;
 import aQute.lib.collections.*;
 import aQute.lib.filter.*;
 import aQute.lib.getopt.*;
 import aQute.lib.hex.*;
 import aQute.lib.io.*;
-import aQute.lib.json.*;
 import aQute.lib.justif.*;
 import aQute.lib.settings.*;
 import aQute.lib.tag.*;
@@ -53,6 +52,8 @@ import aQute.libg.generics.*;
 import aQute.libg.glob.*;
 import aQute.libg.qtokens.*;
 import aQute.libg.reporter.*;
+import aQute.libg.sed.*;
+import aQute.service.reporter.*;
 
 /**
  * Utility to make bundles. Should be areplace for jar and much more.
@@ -3005,5 +3006,33 @@ public class bnd extends Processor {
 		mc.setPedantic(isPedantic());
 		mc.run(options._().toArray(new String[0]), 1);
 		getInfo(mc);
+	}
+	
+	@Description("Generate autocompletion file for bash")
+	public void _generate(Options options) throws Exception {
+		File tmp = File.createTempFile("bnd-completion", ".tmp");
+		tmp.deleteOnExit();
+		
+		try {
+			IO.copy(getClass().getResource("bnd-completion.bash"), tmp);
+			
+			Sed sed = new Sed(tmp);
+			sed.setBackup(false);
+			
+			Reporter r = new ReporterAdapter();
+			CommandLine c = new CommandLine(r);
+			Map<String,Method> commands = c.getCommands(this);
+			StringBuilder sb = new StringBuilder();
+			for(String commandName : commands.keySet()) {
+				sb.append(" "+commandName);
+			}
+			sb.append(" help");
+			
+			sed.replace("%listCommands%", sb.toString().substring(1));
+			sed.doIt();
+			IO.copy(tmp, out);
+		} finally {
+			tmp.delete();
+		}
 	}
 }
