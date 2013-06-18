@@ -1,12 +1,10 @@
 package aQute.bnd.mavenplugin;
 
-import java.io.*;
 import java.util.*;
 
 import org.apache.maven.*;
 import org.apache.maven.execution.*;
 import org.apache.maven.model.*;
-import org.apache.maven.plugin.*;
 import org.apache.maven.project.*;
 import org.codehaus.plexus.component.annotations.*;
 import org.codehaus.plexus.logging.*;
@@ -47,10 +45,12 @@ public class InitializeForBnd extends AbstractMavenLifecycleParticipant {
 			Map<Project, MavenProject> inverted = new HashMap<Project, MavenProject>();
 
 			for (MavenProject mp : session.getProjects()) {
+
 				logger.info("+ " + mp.getBasedir());
 				Project bp = workspace.getProject(mp.getArtifactId());
 				if (bp == null) {
-					logger.warn("[bnd] cannot find a bnd project for " + mp + " " + mp.isExecutionRoot());
+					logger.warn("[bnd] cannot find a bnd project for " + mp
+							+ " " + mp.isExecutionRoot());
 				} else {
 					index.put(mp, bp);
 					inverted.put(bp, mp);
@@ -58,9 +58,13 @@ public class InitializeForBnd extends AbstractMavenLifecycleParticipant {
 			}
 
 			// Go through the list of the maven projects and create
-			// a dependency on any project in the current build that we can find
+			// a dependency on any project in the current build that we can
+			// find
 			// maven will then automatically order them correctly
 			// (the reactor order I think it is called)
+
+			ProjectBuildingRequest config = session.getProjectBuildingRequest();
+			DefaultProjectBuilder dpb = new DefaultProjectBuilder();
 
 			for (Map.Entry<MavenProject, Project> e : index.entrySet()) {
 				for (Project bp : e.getValue().getDependson()) {
@@ -74,6 +78,12 @@ public class InitializeForBnd extends AbstractMavenLifecycleParticipant {
 					} else {
 						logger.error("[bnd] dependency missing from "
 								+ e.getValue() + " to " + bp);
+
+						// TODO could we create the missing project 
+						// here and add it to the session? I tried
+						// but got exceptions when I used DefaultProjectBuilder.
+						// Is it necessary? Or do people always build from the
+						// parent pom?
 					}
 				}
 			}
@@ -89,4 +99,5 @@ public class InitializeForBnd extends AbstractMavenLifecycleParticipant {
 	public void afterSessionStart(MavenSession session)
 			throws MavenExecutionException {
 	}
+
 }
