@@ -22,6 +22,7 @@ Bundle-Activator: test.TestActivator
 
 Import-Package: \
 	junit.framework;resolution:=optional,\
+	test;resolution:=optional, \
 	*
 
 -buildpath: osgi.core,\

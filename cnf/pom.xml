@@ -17,6 +17,7 @@
 		<module>../biz.aQute.bnd</module>
 		<module>../biz.aQute.jpm</module>
 		<module>../biz.aQute.repository</module>
+		<module>../demo</module>
 	</modules>
 
 	<properties>
