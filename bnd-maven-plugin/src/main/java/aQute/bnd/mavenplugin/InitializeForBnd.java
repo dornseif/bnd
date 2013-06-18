@@ -29,7 +29,7 @@ public class InitializeForBnd extends AbstractMavenLifecycleParticipant {
 
 	@Requirement
 	private Logger logger;
-	
+
 	@Requirement
 	private BndWorkspace bndWorkspace;
 
@@ -41,19 +41,20 @@ public class InitializeForBnd extends AbstractMavenLifecycleParticipant {
 
 			// Build an index and an inverted list of the projects
 
-			Map<MavenProject, Project> index = new HashMap<MavenProject, Project>();
-			Map<Project, MavenProject> inverted = new HashMap<Project, MavenProject>();
+			Map<MavenProject, String> index = new HashMap<MavenProject, String>();
+			Map<String, MavenProject> inverted = new HashMap<String, MavenProject>();
 
 			for (MavenProject mp : session.getProjects()) {
 
 				logger.info("+ " + mp.getBasedir());
 				Project bp = workspace.getProject(mp.getArtifactId());
 				if (bp == null) {
-					logger.warn("[bnd] cannot find a bnd project for " + mp
-							+ " " + mp.isExecutionRoot());
+					if (!mp.isExecutionRoot())
+						logger.warn("[bnd] cannot find a bnd project for " + mp
+								+ " " + mp.isExecutionRoot());
 				} else {
-					index.put(mp, bp);
-					inverted.put(bp, mp);
+					index.put(mp, bp.toString());
+					inverted.put(bp.toString(), mp);
 				}
 			}
 
@@ -66,9 +67,11 @@ public class InitializeForBnd extends AbstractMavenLifecycleParticipant {
 			ProjectBuildingRequest config = session.getProjectBuildingRequest();
 			DefaultProjectBuilder dpb = new DefaultProjectBuilder();
 
-			for (Map.Entry<MavenProject, Project> e : index.entrySet()) {
-				for (Project bp : e.getValue().getDependson()) {
-					MavenProject mp = inverted.get(bp);
+			for (Map.Entry<MavenProject, String> e : index.entrySet()) {
+				Project top = workspace.getProject(e.getValue());
+				for (Project bp : top.getDependson()) {
+					System.out.println( " " + e.getKey().getArtifactId() +  " > " + bp	);
+					MavenProject mp = inverted.get(bp.toString());
 					if (mp != null) {
 						Dependency dp = new Dependency();
 						dp.setArtifactId(mp.getArtifactId());
@@ -78,8 +81,7 @@ public class InitializeForBnd extends AbstractMavenLifecycleParticipant {
 					} else {
 						logger.error("[bnd] dependency missing from "
 								+ e.getValue() + " to " + bp);
-
-						// TODO could we create the missing project 
+						// TODO could we create the missing project
 						// here and add it to the session? I tried
 						// but got exceptions when I used DefaultProjectBuilder.
 						// Is it necessary? Or do people always build from the
