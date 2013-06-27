@@ -1,5 +1,28 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project name="master" default="none">
+	
+	<import file="build-template.xml"/>
+	
+	<!--
+		Use this file to provide your workspace-specific tasks. Several examples follow.
+
+		Note: make sure that all defined targets depends on the template.init target.
+		
+		1. To execute tasks before/after compilation:
+		
+		<target name="compile" depends="template.init">
+			<echo message="This task executed before compilation..."/>
+			<antcall target="template.compile"/>
+			<echo message="This task executed AFTER compilation."/>
+		</target>
+		
+		2. Insert a build target:
+		
+		<target name="build" dependencies="template.init,template.build, findbugs"/>
+		<target name="findbugs">
+			...
+		</target>
+	-->
 
 	<!-- 
 	     INIT
@@ -7,27 +30,79 @@
 	     It's purpose is to set up the environment only once
 	     and avoid it being repeatedly done for each antcall.
 	-->
+	<target name="init" depends="template.init" unless="maininitialized">
+		<condition property="srcTestDirExists">
+			<available file="${basedir}/src/test" type="dir"/>
+		</condition>
 
-	<target name="init" unless="initialized">
-		<tstamp>
-			<format property="NOW" pattern="yyyyMMdd-HHmmss" timezone="UTC" />
-		</tstamp>
-
-		<dirname property="projectdir" file="${ant.file}" />
-		<dirname property="workspacedir" file="${projectdir}" />
-		<taskdef resource="aQute/bnd/ant/taskdef.properties">
+		<taskdef name="bindex" classname="org.osgi.impl.bundle.bindex.ant.BindexTask">
 			<classpath>
-				<path location="${workspacedir}/cnf/repo/biz.aQute.bnd/biz.aQute.bnd-latest.jar" />
+				<pathelement location="${workspacedir}/cnf/repo/org.osgi.impl.bundle.bindex/org.osgi.impl.bundle.bindex-2.2.0.jar" />
 			</classpath>
 		</taskdef>
 
-		<bndprepare basedir="${projectdir}" print="false" top="${release.dir}" />
+		<path id="repoindex-classpath" location="${workspacedir}/cnf/repo/org.osgi.impl.bundle.repoindex.ant/org.osgi.impl.bundle.repoindex.ant-latest.jar" />
+		<taskdef resource="taskdef.properties" classpathref="repoindex-classpath"/>
 
-		<taskdef resource="net/sf/antcontrib/antlib.xml">
-			<classpath>
-				<pathelement location="${workspacedir}/cnf/ant-contrib/ant-contrib-1.0b3.jar" />
-			</classpath>
-		</taskdef>
+		<!-- Create a marker property to indicate that initialisation has been completed -->
+		<property name="maininitialized" value="set" />
+	</target>
+
+	<!-- 
+		JARS
+		Iterate of the jars to build.
+	-->
+	<target name="release" depends="template.release">
+		<bindex repositoryfile="bundles/repository.xml" root="bundles" quiet="true">
+			<fileset dir="bundles" includes="**/*.jar" />
+		</bindex>
+		<repoindex out="${releaserepo}/index.xml" rooturl="${releaserepo}" name="bnd" pretty="true">
+			<fileset dir="bundles" includes="**/*.jar" excludes="**/*-latest.jar"/>
+		</repoindex>
+	</target>
+
+	<!-- 
+		JUNIT
+	-->
+	<target name="compileTests" depends="template.init,template.build" if="srcTestDirExists">
+		<mkdir dir="bin"/>
+		<javac fork="yes" executable="${javac}" srcdir="src" destdir="bin" classpath="${project.buildpath}:${project.testpath}" bootclasspath="${project.bootclasspath}" deprecation="true" listfiles="true" target="${javac.target}" source="${javac.source}" debug="${javac.debug}" includeAntRuntime="no" verbose="${verbose}" />
+		<!--
+		  The eclipse compiler copies resources but the Javac compiler does not
+		  If ${src} == ${bin} then this is not necessary, but unfortunately, now
+		  it is.
+		-->
+		<copy todir="bin" verbose="${verbose}" preservelastmodified="true">
+			<fileset dir="src">
+				<exclude name="**/*.java" />
+				<exclude name="**/*.class" />
+			</fileset>
+		</copy>
+	</target>
+
+	<target name="junitSrc" depends="template.init,compileTests" if="srcTestDirExists">
+		<junit showoutput="false" printsummary="true" failureproperty='stop' errorproperty='stop' fork="true" dir="${basedir}">
+			<assertions>
+				<enable />
+			</assertions>
+			<classpath path="${project.buildpath}"/>
+			<formatter type="xml"/>
+			<batchtest todir="${target}">
+				<fileset dir="${src}">
+					<include name="test/**.java"/>
+				</fileset>
+			</batchtest>
+		</junit>
+	</target>
+
+	<target name="junit" depends="junitSrc,template.junit"/>
+
+	<!-- 
+	     INIT for FINDBUGS
+	-->
+	<target name="fbinit" unless="fbinitialized">
+		<path id="antlib-classpath" location="${workspacedir}/cnf/ant-contrib/ant-contrib-1.0b3.jar" />
+		<taskdef resource="net/sf/antcontrib/antlib.xml" classpathref="antlib-classpath" />
 
 		<taskdef name="findbugs" classname="edu.umd.cs.findbugs.anttask.FindBugsTask">
 			<classpath>
@@ -37,114 +112,14 @@
 			</classpath>
 		</taskdef>
 
-		<taskdef name="bindex" classname="org.osgi.impl.bundle.bindex.ant.BindexTask">
-			<classpath>
-				<pathelement location="${workspacedir}/cnf/repo/org.osgi.impl.bundle.bindex/org.osgi.impl.bundle.bindex-2.2.0.jar" />
-			</classpath>
-		</taskdef>
-		
-		<taskdef resource="taskdef.properties" classpath="${workspacedir}/cnf/repo/org.osgi.impl.bundle.repoindex.ant/org.osgi.impl.bundle.repoindex.ant-latest.jar"/>
-
-		<!-- mark init has been run -->
-		<property name="initialized" value="set" />
-		<echo message="Enter project ${project.name}" />
+		<!-- Create a marker property to indicate that initialisation has been completed -->
+		<property name="fbinitialized" value="set" />
 	</target>
 
 	<!-- 
-		DEPENDENCIES
-		Build project dependencies.
+	     FINDBUGS
 	-->
-	<target name="dependencies" depends="init" if="project.dependson" unless="donotrecurse">
-		<subant target="build" inheritAll="false" buildpath="${project.dependson}">
-			<property name="donotrecurse" value="true" />
-		</subant>
-	</target>
-
-	<!--
-	     Test
-	     
-	     These are the OSGi tests.
-	-->
-	<target name="test" depends="compile">
-		<bnd command="test" exceptions="true" basedir="${project}" />
-	</target>
-
-	<!--
-	     COMPILE
-	     Compile the sources. 
-	-->
-	<target name="compile" depends="dependencies" if="project.sourcepath">
-		<mkdir dir="${project.output}" />
-		<javac fork="yes" executable="${javac}" srcdir="${project.sourcepath}" destdir="${project.output}" classpath="${project.buildpath}" bootclasspath="${project.bootclasspath}" deprecation="true" listfiles="true" target="${javac.target}" source="${javac.source}" debug="${javac.debug}" includeAntRuntime="no" verbose="${verbose}" />
-		<!-- 
-		  The eclipse compiler copies resources but the Javac compiler does not
-		  If ${src} == ${bin} then this is not necessary, but unfortunately, now 
-		  it is. 
-		-->
-		<copy todir="${project.output}" verbose="${verbose}" preservelastmodified="true">
-			<fileset dir="${project.sourcepath}">
-				<exclude name="**/*.java" />
-				<exclude name="**/*.class" />
-			</fileset>
-		</copy>
-	</target>
-
-	<!-- 
-		build
-		
-		Use bnd to build this project. Assumption is that any projects that
-		this project depends on are already build. See dependencies.
-	-->
-	<target name="build" depends="compile">
-		<mkdir dir="${target}" />
-		<bnd command="build" exceptions="true" basedir="${project}" />
-	</target>
-
-	<!--
-		Release
-		
-		First release all dependents (set in bnd.bnd -dependson) and then
-		create an index. 
-	-->
-	<target name="_release" depends="init">
-		<bnd command="release" exceptions="true" basedir="${project}" />
-	</target>
-
-	<target name="release" depends="build">
-		<subant target="_release" inheritAll="false" buildpath="${project.dependson}">
-			<property name="donotrecurse" value="true" />
-		</subant>
-		<bindex repositoryfile="bundles/repository.xml" root="bundles" quiet="true">
-			<fileset dir="bundles" includes="**/*.jar" />
-		</bindex>
-		<repoindex out="${releaserepo}/index.xml" rooturl="${releaserepo}" name="bnd" pretty="true">
-			<fileset dir="bundles" includes="**/*.jar" excludes="**/*-latest.jar"/>
-		</repoindex>
-	</target>
-
-	<!--
-		Junit
-		
-		Run all the tests. If the -nojunit property is set then this project
-		cannot run junit tests and they should not be run. These are normal
-		junit tests, not OSGi junit tests.
-	-->
-	<target name="junit" depends="build" unless="no.junit">
-		<junit showoutput="false" printsummary="true" failureproperty='stop' errorproperty='stop' fork="true" dir="${basedir}">
-			<assertions>
-				<enable />
-			</assertions>
-			<classpath path="${project.buildpath}" />
-			<formatter type="xml" />
-			<batchtest todir="${target}">
-				<fileset dir="${src}">
-					<include name="test/**.java" />
-				</fileset>
-			</batchtest>
-		</junit>
-	</target>
-
-	<target name="findbugs" depends="init,build">
+	<target name="findbugs" depends="template.init,fbinit,template.build">
 		<property name="project.bootclasspath.adjusted" value="${project.bootclasspath}" />
 		<property name="project.buildpath.adjusted" value="${project.buildpath}" />
 		<property name="project.testpath.adjusted" value="${project.testpath}" />
@@ -228,66 +203,12 @@
 	<!--
 	     CLEAN
 	-->
-	<target name="deepclean" depends="init,clean" if="project.dependson">
-		<subant target="clean" inheritAll="false" buildpath="${project.dependson}" />
+	<target name="deepclean" depends="template.init,template.clean" if="project.dependson">
+		<subant target="template.clean" inheritAll="false" buildpath="${project.dependson}" />
 	</target>
 
-	<target name="clean" depends="init">
-		<bnd command="clean" exceptions="true" basedir="${project}" />
-		<delete dir="bin" />
-		<delete dir="bin_test" />
-		<delete dir="${target}" />
-
+	<target name="clean" depends="template.init,template.clean">
 		<delete dir="${workspacedir}/cnf/tmp" />
 		<delete dir="${workspacedir}/cnf/p2target" />
 	</target>
-
-	<!--
-	     ECHO
-	-->
-	<target name="echo" depends="init">
-		<echo>verbose:                ${verbose}</echo>
-		<echo>build:                  ${build}</echo>
-		<echo>project.name:           ${project.name}</echo>
-		<echo>Bundle-Version:         ${Bundle-Version}</echo>
-		<echo>project.output:         ${project.output}</echo>
-		<echo>project.sourcepath:     ${project.sourcepath}</echo>
-		<echo>project.allsourcepath:  ${project.allsourcepath}</echo>
-		<echo>project.buildpath:      ${project.buildpath}</echo>
-		<echo>project.testpath:       ${project.testpath}</echo>
-		<echo>project.dependson:      ${project.dependson}</echo>
-		<echo>project.bootclasspath:  ${project.bootclasspath}</echo>
-		<echo>javac:                  ${javac}</echo>
-		<echo>javac.debug:            ${javac.debug}</echo>
-		<echo>javac.source:           ${javac.source}</echo>
-		<echo>javac.target:           ${javac.target}</echo>
-		<echo>javac.ee:               ${javac.ee}</echo>
-		<echo>p:                      ${p}</echo>
-		<echo>btool.manifestVersion:  ${btool.manifestVersion}</echo>
-		<echo>btool.analyse:          ${btool.analyse}</echo>
-		<echo>btool.showmanifest:     ${btool.showmanifest}</echo>
-		<echo>btool.noversion:     	  ${btool.noversion}</echo>
-		<echo>btool.sources:     	  ${btool.sources}</echo>
-		<echo>btool.noextraheaders:   ${btool.noextraheaders}</echo>
-		<echo>jars.compile.order:     ${jars.compile.order}</echo>
-		<echo>bin.includes:           ${bin.includes}</echo>
-		<echo>base.modfied:           ${base.modified} (${base.modified.readable})</echo>
-		<echo>target:                 ${target}</echo>
-		<echo>release.target:         ${release.target}</echo>
-		<echo>licensed repo:          ${licensed-repo}</echo>
-		<echo>repo:                   ${repo}</echo>
-		<echo>releaserepo:            ${releaserepo}</echo>
-		<echo>use.bnd:                ${use.bnd}</echo>
-		<echo>nodeploy:               ${nodeploy}</echo>
-		<echo>-dependson:             ${-dependson}</echo>
-
-	</target>
-
-	<!--
-	     Default Target
-	-->
-	<target name="none">
-		<fail message="This ant script should never be directly called." />
-	</target>
-
 </project>
